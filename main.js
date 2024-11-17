@@ -983,14 +983,15 @@ function microSurvivors(target = document.body, width = 400, height = 400) {
 
   // #region Manager definition
   const MANAGER_STATES = {
-    IN_PROGRESS: 0,
-    DEAD: 1,
-    PICKING_UPGRADE: 2,
-    PAUSED: 3,
-    WON: 4,
-    START: 5,
-    PICKING_PLAYER: 6,
-  };
+		IN_PROGRESS: 0,
+		DEAD: 1,
+		PICKING_UPGRADE: 2,
+		PAUSED: 3,
+		START: 5,
+		PICKING_PLAYER: 6,
+	};
+	
+	
 
   const startingManagerState = {
     lastSpawnRate: -1,
@@ -1256,32 +1257,28 @@ function microSurvivors(target = document.body, width = 400, height = 400) {
 
   /** @type {SpawnWave[]} */
   const spawnWaves = [
-    { enemies: [boxLevel1] },
-    { enemies: [boxLevel1, triangleLevel1] },
-    { enemies: [triangleLevel1, circleLevel1], boss: boxBoss },
-    { enemies: [triangleLevel1, circleLevel1] },
-    { enemies: [boxLevel2], wave: rectangleWave(boxTank) },
-    { enemies: [boxLevel2, triangleLevel2, circleLevel1] },
-    {
-      enemies: [triangleLevel2, circleLevel1],
-      boss: triangleBoss,
-    },
-    { enemies: [boxLevel2, triangleLevel2, circleLevel2] },
-    {
-      enemies: [circleLevel2, boxLevel3],
-      wave: circleWave(circleTank),
-    },
-    { enemies: [boxLevel3, triangleLevel3] },
-    { enemies: [boxLevel3, triangleLevel3] },
-    { enemies: [boxLevel3, triangleLevel3, circleLevel3] },
-    { enemies: [boxLevel3, triangleLevel3], boss: circleBoss },
-    {
-      enemies: [boxLevel3, triangleLevel3, circleLevel3],
-      spawnRate: 0.1,
-      wave: rectangleWave(triangleTank),
-    },
-    { enemies: [], boss: finalBoss },
-  ];
+		// Initial waves remain the same for early game progression
+		{ enemies: [boxLevel1] },
+		{ enemies: [boxLevel1, triangleLevel1] },
+		{ enemies: [triangleLevel1, circleLevel1], boss: boxBoss },
+		{ enemies: [triangleLevel1, circleLevel1] },
+		{ enemies: [boxLevel2], wave: rectangleWave(boxTank) },
+		{ enemies: [boxLevel2, triangleLevel2, circleLevel1] },
+		{ enemies: [triangleLevel2, circleLevel1], boss: triangleBoss },
+		{ enemies: [boxLevel2, triangleLevel2, circleLevel2] },
+		{ enemies: [circleLevel2, boxLevel3], wave: circleWave(circleTank) },
+		{ enemies: [boxLevel3, triangleLevel3] },
+		{ enemies: [boxLevel3, triangleLevel3, circleLevel3] },
+		{ enemies: [boxLevel3, triangleLevel3], boss: circleBoss },
+	];
+	
+	const scaleEnemyStats = (baseEnemy, scaleFactor) => ({
+		...baseEnemy,
+		health: floor(baseEnemy.health * scaleFactor),
+		damage: floor(baseEnemy.damage * scaleFactor),
+		experience: floor(baseEnemy.experience * scaleFactor),
+	});
+	
 
   const finalBossAt = 600;
   const waveTime = finalBossAt / (spawnWaves.length - 1);
@@ -1710,15 +1707,6 @@ function microSurvivors(target = document.body, width = 400, height = 400) {
       drawText(w2, h2 + 50, pressEnterToStart, white, center);
       setGlobalAlpha(1);
     },
-    [MANAGER_STATES.WON]() {
-      drawText(w2, 100, "YOU WON", white, center, middle);
-
-      let y = 130;
-      y = renderSurvivalStatsUi(70, y, width - 140);
-      y += 30;
-
-      drawText(w2, y, pressEnterToRestart, white, center);
-    },
   };
 
   const renderUI = () => {
@@ -1939,47 +1927,51 @@ function microSurvivors(target = document.body, width = 400, height = 400) {
   const managerTick = (deltaTime) => {
     switch (manager.gameState) {
       case MANAGER_STATES.IN_PROGRESS: {
-        manager.gameRuntime += deltaTime;
-
-        if (justPressedInput.p) {
-          manager.gameState = MANAGER_STATES.PAUSED;
-        }
-
-        if (player.health <= 0) {
-          manager.gameState = MANAGER_STATES.DEAD;
-        }
-
-        const spawnRateIndex = floor(manager.gameRuntime / waveTime);
-        const spawnRate = spawnWaves[spawnRateIndex];
-
-        if (manager.gameRuntime > finalBossAt && enemies.length === 0) {
-          manager.gameState = MANAGER_STATES.WON;
-        }
-
-        if (spawnRate) {
-          if (spawnRateIndex !== manager.lastSpawnRate) {
-            manager.lastSpawnRate = spawnRateIndex;
-
-            if (spawnRate.boss) {
-              spawnEnemy(spawnRate.boss);
-            }
-
-            spawnRate.wave?.();
-          }
-
-          const rate = spawnRate.spawnRate ?? 0.205;
-          if (spawnRate.enemies.length > 0 && manager.spawnTimeout > rate) {
-            spawnEnemy(
-              spawnRate.enemies[spawnTick++ % spawnRate.enemies.length],
-            );
-
-            manager.spawnTimeout -= rate;
-          }
-
-          manager.spawnTimeout += deltaTime;
-        }
-
-        break;
+				manager.gameRuntime += deltaTime;
+			
+				if (justPressedInput.p) {
+					manager.gameState = MANAGER_STATES.PAUSED;
+				}
+			
+				if (player.health <= 0) {
+					manager.gameState = MANAGER_STATES.DEAD;
+				}
+			
+				// Calculate wave scaling based on time
+				const baseWaveTime = 40; // seconds per wave
+				const currentWave = floor(manager.gameRuntime / baseWaveTime);
+				const scaleFactor = 1 + (currentWave / 10); // Increase difficulty by 10% each wave
+				
+				// Get base wave pattern and scale it
+				const baseWave = spawnWaves[currentWave % spawnWaves.length];
+				const spawnRate = {
+					...baseWave,
+					enemies: baseWave.enemies.map(e => scaleEnemyStats(e, scaleFactor)),
+					boss: baseWave.boss ? scaleEnemyStats(baseWave.boss, scaleFactor * 1.5) : undefined,
+					spawnRate: baseWave.spawnRate ?? (0.205 / scaleFactor), // Spawn faster as game progresses
+				};
+			
+				if (floor(manager.gameRuntime / baseWaveTime) !== manager.lastSpawnRate) {
+					manager.lastSpawnRate = floor(manager.gameRuntime / baseWaveTime);
+			
+					if (spawnRate.boss) {
+						spawnEnemy(spawnRate.boss);
+					}
+			
+					spawnRate.wave?.();
+				}
+			
+				const rate = spawnRate.spawnRate ?? 0.205;
+				if (spawnRate.enemies.length > 0 && manager.spawnTimeout > rate) {
+					spawnEnemy(
+						spawnRate.enemies[spawnTick++ % spawnRate.enemies.length],
+					);
+			
+					manager.spawnTimeout -= rate;
+				}
+			
+				manager.spawnTimeout += deltaTime;
+				break;
       }
 
       case MANAGER_STATES.WON:
